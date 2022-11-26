@@ -65,7 +65,28 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  }else if(r_scause() == 13 || r_scause() == 15){
+    uint64 fault_address = r_stval();
+    int i;
+    for(i = 0; i < MAX_MMR; i++){
+      if((fault_address >= p->mmr[i].addr) && (fault_address < (p->mmr[i].addr + p->mmr[i].length))){
+        // check mapped region permissions
+        if(r_scause() == 13 && (p->mmr[i].prot && PTE_R)){
+          void *phys_addr = kalloc(); // allocate the physical memory frame using kalloc().
+          memset(phys_addr,0,PGSIZE); // map the frame into the process page table.
+          if(mappages(p->pagetable, PGROUNDDOWN(fault_address), PGSIZE, (uint64)phys_addr, p->mmr[i].prot | PTE_U) < 0){
+            panic("Allocation failed");
+          }
+        }else if(r_scause() == 15 && (p->mmr[i].prot && PTE_W)){
+          void *phys_addr = kalloc(); // allocate the physical memory frame using kalloc().
+          memset(phys_addr,0,PGSIZE); // map the frame into the process page table.
+          if(mappages(p->pagetable, PGROUNDDOWN(fault_address), PGSIZE, (uint64)phys_addr, p->mmr[i].prot | PTE_U) < 0){
+            panic("Allocation failed");
+          }
+        }
+      }
+    }
+  }else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -217,4 +238,3 @@ devintr()
     return 0;
   }
 }
-

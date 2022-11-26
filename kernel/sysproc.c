@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+//#include "pstat.h"
 
 uint64
 sys_exit(void)
@@ -95,3 +96,70 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_freepmem(void)
+{
+  return kfreepagecount();
+}
+
+//set given semaphore (and value) to the semaphore table
+uint64
+sys_sem_init(void)
+{
+  uint64 sem_addr;
+  int pshared;
+  int value;
+
+  if(argaddr(0,&sem_addr) < 0)
+    return -1;
+  if(argint(1,&pshared)< 0)
+    return -1;
+  if(argint(2,&value)<0)
+    return -1;
+
+  int idx = semalloc(); //get free space in the table
+  semtable.sem[idx].count = value;  //initialize given count
+
+  copyout(myproc()->pagetable, sem_addr,(char*)&idx,sizeof(int));
+  return (0);
+}
+
+uint64
+sys_sem_wait(void){
+  //aquires the values
+  //checks if counts is greater than 0 -> subtract from count
+  //if equal to 0 -> sleep (what moore wrote on the board) until count is > 0
+  uint64 sem_addr;
+  int idx = 0;
+
+  if(argaddr(0,&sem_addr) < 0)
+    return -1;
+
+  acquire(&semtable.lock);
+
+  acquire(&semtable.lock);
+  while(semtable.sem->count == 0){
+     sleep((void*)&semtable.sem[idx].lock,&semtable.sem[idx].lock);
+     idx += 1;
+  }
+  semtable.sem->count -= 1;
+  release(&semtable.lock);
+  return(0);
+}
+
+//adds 1 to semtable count
+uint64
+sys_sem_post(void){
+  uint64 sem_addr;
+  //a0 address of users sem_t
+  if(argaddr(0, &sem_addr) < 0)
+    return -1;
+
+  acquire(&semtable.lock);
+  semtable.sem->count += 1;
+  //uses wakeup function for any processes that are waiting on the post
+  wakeup(&semtable.sem->lock);
+  release(&semtable.lock);
+  return(0);
+};
