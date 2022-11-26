@@ -1,3 +1,5 @@
+#define NULL 0
+
 struct stat;
 struct rtcdate;
 
@@ -23,6 +25,12 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+uint64 freemem(void);
+
+int sem_init(sem_t *sem, int pshared, unsigned int value);
+int sem_destroy(sem_t *sem);
+int sem_wait(sem_t *sem);
+int sem_post(sem_t *sem);
 
 // ulib.c
 int stat(const char*, struct stat*);
