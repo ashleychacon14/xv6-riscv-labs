@@ -97,7 +97,7 @@ sys_uptime(void)
   return xticks;
 }
 
-uint64
+int
 sys_freepmem(void)
 {
   return kfreepagecount();
@@ -123,6 +123,32 @@ sys_sem_init(void)
 
   copyout(myproc()->pagetable, sem_addr,(char*)&idx,sizeof(int));
   return (0);
+}
+
+uint64 
+sys_sem_destroy(void){
+  uint64 usem_addr;
+  int sem_index;
+
+  if(argaddr(0, &usem_addr) < 0)
+    return -1;
+
+  struct proc *p = myproc();
+
+  // copy the sem_index value into the user's sem_t variable
+  if (copyin(p->pagetable, (char*)&sem_index, usem_addr, sizeof(int)) < 0){
+    return -1;
+  }
+  acquire(&semtable.sem[sem_index].lock);
+  if (semtable.sem[sem_index].valid != 1){
+    release(&semtable.sem[sem_index].lock);
+    return -1;
+  }
+  semdealloc(sem_index);
+
+  release(&semtable.sem[sem_index].lock);
+
+  return 0;
 }
 
 uint64
@@ -156,10 +182,21 @@ sys_sem_post(void){
   if(argaddr(0, &sem_addr) < 0)
     return -1;
 
-  acquire(&semtable.lock);
-  semtable.sem->count += 1;
-  //uses wakeup function for any processes that are waiting on the post
-  wakeup(&semtable.sem->lock);
-  release(&semtable.lock);
+  struct proc *p = myproc();
+  int idx = 0;
+
+  if (copyin(p->pagetable, (char*)&idx, sem_addr, sizeof(int)) < 0){
+    return -1;
+  }
+
+  if (semtable.sem[idx].valid != 1){
+    release(&semtable.sem[idx].lock);
+    return -1;
+  }
+  else{
+    semtable.sem[idx].count += 1;
+    wakeup((void *)&semtable.sem[idx]);
+    release(&semtable.sem[idx].lock);
+  }
   return(0);
 };
