@@ -2,11 +2,15 @@
 
 struct stat;
 struct rtcdate;
+struct pstat;
+struct rusage;
+
 
 // system calls
 int fork(void);
 int exit(int) __attribute__((noreturn));
 int wait(int*);
+int wait2(int*, struct rusage*);
 int pipe(int*);
 int write(int, const void*, int);
 int read(int, void*, int);
@@ -25,12 +29,17 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
-uint64 freemem(void);
-
+int getprocs(struct pstat*);
+int *mmap(void*, uint64, int, int, int, int);
+int munmap(void*, uint64);
+uint64 freepmem(void);
 int sem_init(sem_t *sem, int pshared, unsigned int value);
-int sem_destroy(sem_t *sem);
 int sem_wait(sem_t *sem);
 int sem_post(sem_t *sem);
+int sem_destroy(sem_t *sem);
+
+
+
 
 // ulib.c
 int stat(const char*, struct stat*);
