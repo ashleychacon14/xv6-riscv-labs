@@ -97,6 +97,14 @@ sys_uptime(void)
   return xticks;
 }
 
+int sys_getprocs(uint64 addr)
+{
+  if (argaddr(0, &addr) < 0)
+    return -1;
+
+  return procinfo(addr);
+}
+
 int
 sys_freepmem(void)
 {
@@ -129,7 +137,7 @@ uint64
 sys_sem_destroy(void){
   uint64 usem_addr;
   int sem_index;
-
+  
   if(argaddr(0, &usem_addr) < 0)
     return -1;
 
@@ -157,46 +165,57 @@ sys_sem_wait(void){
   //checks if counts is greater than 0 -> subtract from count
   //if equal to 0 -> sleep (what moore wrote on the board) until count is > 0
   uint64 sem_addr;
-  int idx = 0;
+  int sem_index;
 
   if(argaddr(0,&sem_addr) < 0)
     return -1;
-
-  acquire(&semtable.lock);
-
-  acquire(&semtable.lock);
-  while(semtable.sem->count == 0){
-     sleep((void*)&semtable.sem[idx].lock,&semtable.sem[idx].lock);
-     idx += 1;
+  
+  struct proc *p = myproc();
+  
+  // copy the sem_index value into the user's sem_t variable
+  if (copyin(p->pagetable,(char*)&sem_index, sem_addr, sizeof(int)) < 0){
+    return -1;
   }
-  semtable.sem->count -= 1;
-  release(&semtable.lock);
-  return(0);
+
+  acquire(&semtable.sem[sem_index].lock);
+  if(semtable.sem[sem_index].valid != 1){
+    release(&semtable.sem[sem_index].lock);
+    return -1;
+  }
+
+  //acquire(&semtable.sem[sem_index].lock);
+  while(semtable.sem[sem_index].count == 0){
+     sleep((void*)&semtable.sem[sem_index].lock,&semtable.sem[sem_index].lock);
+  }
+  semtable.sem[sem_index].count -=1;
+  release(&semtable.sem[sem_index].lock);
+  return 0;
 }
 
-//adds 1 to semtable count
 uint64
 sys_sem_post(void){
   uint64 sem_addr;
+  int sem_index;
   //a0 address of users sem_t
   if(argaddr(0, &sem_addr) < 0)
     return -1;
 
   struct proc *p = myproc();
-  int idx = 0;
 
-  if (copyin(p->pagetable, (char*)&idx, sem_addr, sizeof(int)) < 0){
+  if (copyin(p->pagetable,(char*)&sem_index, sem_addr, sizeof(int)) < 0){
     return -1;
   }
 
-  if (semtable.sem[idx].valid != 1){
-    release(&semtable.sem[idx].lock);
+  if (semtable.sem[sem_index].valid != 1){
+    release(&semtable.sem[sem_index].lock);
     return -1;
   }
   else{
-    semtable.sem[idx].count += 1;
-    wakeup((void *)&semtable.sem[idx]);
-    release(&semtable.sem[idx].lock);
+    //adds 1 to semtable count
+    semtable.sem[sem_index].count += 1;
+    //calls wakeup to any proccess that are waiting
+    wakeup((void *)&semtable.sem[sem_index]);
+    release(&semtable.sem[sem_index].lock);
   }
-  return(0);
+  return 0;
 };

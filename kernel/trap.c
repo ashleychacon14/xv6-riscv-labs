@@ -8,6 +8,7 @@
 
 struct spinlock tickslock;
 uint ticks;
+//struct spinlock listid_lock;
 
 extern char trampoline[], uservec[], userret[];
 
@@ -20,6 +21,7 @@ void
 trapinit(void)
 {
   initlock(&tickslock, "time");
+  //initlock(&listid_lock, "listid");
 }
 
 // set up to take exceptions and traps while in the kernel.
@@ -49,8 +51,9 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
+  //printf("hello, %d",r_scause());
   if(r_scause() == 8){
+    
     // system call
 
     if(p->killed)
@@ -63,30 +66,55 @@ usertrap(void)
     // an interrupt will change sstatus &c registers,
     // so don't enable until done with those registers.
     intr_on();
-
     syscall();
-  }else if(r_scause() == 13 || r_scause() == 15){
-    uint64 fault_address = r_stval();
-    int i;
-    for(i = 0; i < MAX_MMR; i++){
-      if((fault_address >= p->mmr[i].addr) && (fault_address < (p->mmr[i].addr + p->mmr[i].length))){
-        // check mapped region permissions
+
+  } 
+  // Check if it's 13 or 15
+  else if(r_scause() == 13 || r_scause() == 15){
+
+    uint64 fault_addr = r_stval();
+
+
+    for(int i = 0; i < 10; i++){
+      //if in mapped memory
+      
+      if((fault_addr >= p->mmr[i].addr) && (fault_addr < p->mmr[i].addr + p->mmr[i].length)){
+        
+        // If mapped region allows operation
         if(r_scause() == 13 && (p->mmr[i].prot && PTE_R)){
-          void *phys_addr = kalloc(); // allocate the physical memory frame using kalloc().
-          memset(phys_addr,0,PGSIZE); // map the frame into the process page table.
-          if(mappages(p->pagetable, PGROUNDDOWN(fault_address), PGSIZE, (uint64)phys_addr, p->mmr[i].prot | PTE_U) < 0){
-            panic("Allocation failed");
+          
+          // Allocates the physical memory frame kalloc()
+          // Maps new frame into the process' page table
+          void *phys_addr = kalloc();
+          memset(phys_addr, 0, PGSIZE);
+          
+          // struct mmr_list *listid_lock = get_mmr_list(p->mmr->mmr_family.listid);
+          // acquire(&listid_lock[p->mmr[i].mmr_family.listid].lock);
+
+          // for (pmmrlist = listid_lock; pmmrlist < &listid_lock[NPROC*MAX_MMR]; pmmrlist++) {
+          //   initlock(&pmmrlist->lock, "mmrlist");
+          //   pmmrlist->valid = 0;
+          // }
+
+          if(mappages(p->pagetable, PGROUNDDOWN(fault_addr),PGSIZE, (uint64)phys_addr, p->mmr[i].prot | PTE_U ) < 0){
+            panic("Unable to allocate physical memory");
           }
-        }else if(r_scause() == 15 && (p->mmr[i].prot && PTE_W)){
-          void *phys_addr = kalloc(); // allocate the physical memory frame using kalloc().
-          memset(phys_addr,0,PGSIZE); // map the frame into the process page table.
-          if(mappages(p->pagetable, PGROUNDDOWN(fault_address), PGSIZE, (uint64)phys_addr, p->mmr[i].prot | PTE_U) < 0){
-            panic("Allocation failed");
-          }
+
         }
+        else if (r_scause() == 15 && (p->mmr[i].prot && PTE_W)){
+          void *phys_addr = kalloc();
+          memset(phys_addr, 0, PGSIZE);
+          if(mappages(p->pagetable, PGROUNDDOWN(fault_addr), PGSIZE, (uint64)phys_addr, p->mmr[i].prot | PTE_U )< 0){
+            panic("Unable to allocate physical memory");
+          }
+
+        }
+
       }
     }
-  }else if((which_dev = devintr()) != 0){
+  }
+  
+  else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
@@ -96,11 +124,25 @@ usertrap(void)
 
   if(p->killed)
     exit(-1);
-
+  
+  
+  
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
-    yield();
-
+  if(which_dev == 2){
+    p->cputime += 1;
+    p->tsticks += 1;
+    if (p->tsticks > timeslice(p->priority)){
+      
+      
+      if (p->priority < LOW){
+        p->priority++;
+        p-> timeslice = timeslice(p->priority);
+      }
+      yield();
+      
+    }
+  }
+  
   usertrapret();
 }
 
@@ -158,6 +200,7 @@ kerneltrap()
   uint64 sepc = r_sepc();
   uint64 sstatus = r_sstatus();
   uint64 scause = r_scause();
+  struct proc *p = myproc();
   
   if((sstatus & SSTATUS_SPP) == 0)
     panic("kerneltrap: not from supervisor mode");
@@ -171,8 +214,19 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
-    yield();
+  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING){
+    p->cputime += 1;
+    p->tsticks += 1;
+    if (p->tsticks > timeslice(p->priority)){
+      
+      if(p->tsticks < LOW){
+        p-> priority++;
+        p->timeslice = timeslice(p->priority);
+      }
+      yield();
+    }
+  }
+  
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
