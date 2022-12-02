@@ -84,15 +84,15 @@ kalloc(void)
 uint64
 kfreepagecount()
 {
-  int count = 0;
   struct run *r;
   acquire(&kmem.lock);
   r= kmem.freelist;
+  int count = 0;
 
   while(r){
-    kmem.freelist = r->next;
     count += 1;
+    r = r->next;
   }
   release(&kmem.lock);
-  return count*PGSIZE;
+  return count * PGSIZE;
 }

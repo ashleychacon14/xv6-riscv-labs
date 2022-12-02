@@ -15,7 +15,7 @@ struct semaphore{
 
 struct semtab{
   struct spinlock lock;
-  struct semaphore sem[NSEM];
+  struct semaphore sem[100];
 };
 
 extern struct semtab semtable;

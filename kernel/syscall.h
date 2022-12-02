@@ -20,8 +20,12 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
-#define SYS_freepmem 22
-#define SYS_seminit 23
-#define SYS_semdestroy 24
-#define SYS_semwait 25
-#define SYS_sempost  26
+#define SYS_getprocs 22
+#define SYS_wait2   23
+#define SYS_freepmem 24
+#define SYS_mmap 25
+#define SYS_munmap 26
+#define SYS_sem_init 27
+#define SYS_sem_destroy 28
+#define SYS_sem_wait 29
+#define SYS_sem_post 30
